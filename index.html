@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Ashraful Realistic Face Animation</title>
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background: linear-gradient(135deg, #1a1a2e, #16213e);
+        height: 100vh;
+        margin: 0;
+        font-family: Arial, sans-serif;
+      }
+      canvas {
+        border: 3px solid #4a9eff;
+        border-radius: 15px;
+        box-shadow: 0 8px 32px rgba(74, 158, 255, 0.3);
+      }
+      .controls {
+        margin-top: 20px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      button {
+        padding: 10px 20px;
+        font-size: 16px;
+        border: none;
+        border-radius: 8px;
+        background: linear-gradient(45deg, #4a9eff, #007acc);
+        color: white;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(74, 158, 255, 0.3);
+      }
+      button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(74, 158, 255, 0.4);
+      }
+      button:active {
+        transform: translateY(0);
+      }
+      .vowel-btn {
+        font-weight: bold;
+        font-size: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="faceCanvas" width="600" height="600"></canvas>
+    <div class="controls">
+      <button class="vowel-btn" onclick="speakVowel('A')">A</button>
+      <button class="vowel-btn" onclick="speakVowel('E')">E</button>
+      <button class="vowel-btn" onclick="speakVowel('I')">I</button>
+      <button class="vowel-btn" onclick="speakVowel('O')">O</button>
+      <button class="vowel-btn" onclick="speakVowel('U')">U</button>
+      <button onclick="speakSequence()">Say AEIOU</button>
+      <button onclick="toggleIdleAnimation()">Toggle Idle</button>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("faceCanvas");
+      const ctx = canvas.getContext("2d");
+      const faceImg = new Image();
+
+      // Use a placeholder colored rectangle if image doesn't load
+      let imageLoaded = false;
+      faceImg.src = "asharaful.jpg";
+
+      const landmarks = {
+        leftEye: { x: 231, y: 254 },
+        rightEye: { x: 359, y: 254 },
+        mouth: { x: 294, y: 374 },
+        leftCheek: { x: 180, y: 320 },
+        rightCheek: { x: 410, y: 320 },
+        jaw: { x: 294, y: 450 },
+        forehead: { x: 294, y: 180 },
+      };
+
+      // Vowel mouth shapes and facial adjustments
+      const vowelShapes = {
+        A: {
+          mouth: { width: 35, height: 25, roundness: 0.8 },
+          jaw: { drop: 8, forward: 2 },
+          cheeks: { expand: 3 },
+          eyebrows: { raise: 2 },
+          duration: 600,
+        },
+        E: {
+          mouth: { width: 45, height: 12, roundness: 0.3 },
+          jaw: { drop: 3, forward: 1 },
+          cheeks: { expand: 1 },
+          eyebrows: { raise: 1 },
+          duration: 500,
+        },
+        I: {
+          mouth: { width: 25, height: 8, roundness: 0.2 },
+          jaw: { drop: 1, forward: 0 },
+          cheeks: { expand: -1 },
+          eyebrows: { raise: 0 },
+          duration: 400,
+        },
+        O: {
+          mouth: { width: 20, height: 28, roundness: 1.0 },
+          jaw: { drop: 5, forward: 3 },
+          cheeks: { expand: 2 },
+          eyebrows: { raise: 1 },
+          duration: 550,
+        },
+        U: {
+          mouth: { width: 15, height: 20, roundness: 1.0 },
+          jaw: { drop: 3, forward: 4 },
+          cheeks: { expand: 0 },
+          eyebrows: { raise: 0 },
+          duration: 500,
+        },
+      };
+
+      let currentAnimation = null;
+      let idleAnimation = true;
+      let animationFrame = 0;
+
+      faceImg.onload = () => {
+        imageLoaded = true;
+        startIdleAnimation();
+      };
+
+      faceImg.onerror = () => {
+        console.log("Image not found, using placeholder");
+        startIdleAnimation();
+      };
+
+      function drawBaseFace() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (imageLoaded) {
+          ctx.drawImage(faceImg, 0, 0, canvas.width, canvas.height);
+        } else {
+          // Draw a simple face placeholder
+          ctx.fillStyle = "#f4c2a1";
+          ctx.fillRect(150, 150, 300, 350);
+
+          // Basic facial features
+          ctx.fillStyle = "#333";
+          ctx.beginPath();
+          ctx.arc(landmarks.leftEye.x, landmarks.leftEye.y, 15, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.arc(
+            landmarks.rightEye.x,
+            landmarks.rightEye.y,
+            15,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+
+          ctx.fillStyle = "#d4a574";
+          ctx.beginPath();
+          ctx.arc(landmarks.mouth.x, landmarks.mouth.y, 20, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      function drawEnhancedFace(params = {}) {
+        const {
+          eyesClosed = false,
+          mouthShape = null,
+          jawDrop = 0,
+          jawForward = 0,
+          cheekExpansion = 0,
+          eyebrowRaise = 0,
+          blinkIntensity = 1,
+        } = params;
+
+        drawBaseFace();
+
+        // Draw enhanced eyes with more natural blink
+        if (eyesClosed) {
+          drawNaturalBlink(landmarks.leftEye, blinkIntensity);
+          drawNaturalBlink(landmarks.rightEye, blinkIntensity);
+        }
+
+        // Draw cheek movement
+        if (cheekExpansion !== 0) {
+          drawCheekExpansion(cheekExpansion);
+        }
+
+        // Draw eyebrow movement
+        if (eyebrowRaise !== 0) {
+          drawEyebrowMovement(eyebrowRaise);
+        }
+
+        // Draw mouth with jaw adjustment
+        if (mouthShape) {
+          drawVowelMouth(mouthShape, jawDrop, jawForward);
+        }
+
+        // Add subtle jaw shadow for depth
+        if (jawDrop > 0) {
+          drawJawShadow(jawDrop);
+        }
+      }
+
+      function drawNaturalBlink(eyePos, intensity) {
+        const gradient = ctx.createLinearGradient(
+          eyePos.x - 25,
+          eyePos.y - 5,
+          eyePos.x + 25,
+          eyePos.y + 5
+        );
+        gradient.addColorStop(0, "rgba(139, 119, 101, 0.9)");
+        gradient.addColorStop(0.5, "rgba(101, 87, 73, 1)");
+        gradient.addColorStop(1, "rgba(139, 119, 101, 0.9)");
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.ellipse(
+          eyePos.x,
+          eyePos.y,
+          25 * intensity,
+          3 + 2 * intensity,
+          0,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+
+        // Add eyelash effect
+        ctx.strokeStyle = "rgba(50, 40, 30, 0.8)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(eyePos.x, eyePos.y - 1, 25 * intensity, 1, 0, 0, Math.PI);
+        ctx.stroke();
+      }
+
+      function drawVowelMouth(shape, jawDrop, jawForward) {
+        const mouthX = landmarks.mouth.x + jawForward;
+        const mouthY = landmarks.mouth.y + jawDrop;
+
+        // Create mouth gradient for depth
+        const gradient = ctx.createRadialGradient(
+          mouthX,
+          mouthY,
+          0,
+          mouthX,
+          mouthY,
+          Math.max(shape.width, shape.height)
+        );
+        gradient.addColorStop(0, "#8B0000");
+        gradient.addColorStop(0.6, "#654321");
+        gradient.addColorStop(1, "#2F1B14");
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+
+        if (shape.roundness > 0.7) {
+          // Round mouth (O, U)
+          ctx.ellipse(
+            mouthX,
+            mouthY,
+            shape.width,
+            shape.height,
+            0,
+            0,
+            Math.PI * 2
+          );
+        } else if (shape.roundness < 0.4) {
+          // Stretched mouth (E, I)
+          ctx.ellipse(
+            mouthX,
+            mouthY,
+            shape.width,
+            shape.height,
+            0,
+            0,
+            Math.PI * 2
+          );
+        } else {
+          // Open mouth (A)
+          ctx.ellipse(
+            mouthX,
+            mouthY,
+            shape.width,
+            shape.height,
+            0,
+            0,
+            Math.PI * 2
+          );
+        }
+        ctx.fill();
+
+        // Add lip highlight
+        ctx.strokeStyle = "rgba(200, 150, 120, 0.6)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(
+          mouthX,
+          mouthY - shape.height / 2,
+          shape.width * 0.8,
+          shape.height / 4,
+          0,
+          Math.PI,
+          Math.PI * 2
+        );
+        ctx.stroke();
+
+        // Add teeth for open vowels
+        if (shape.height > 15) {
+          ctx.fillStyle = "rgba(255, 255, 240, 0.9)";
+          ctx.beginPath();
+          ctx.ellipse(
+            mouthX,
+            mouthY - shape.height / 3,
+            shape.width * 0.7,
+            shape.height / 6,
+            0,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+        }
+      }
+
+      function drawCheekExpansion(expansion) {
+        if (expansion === 0) return;
+
+        const intensity = Math.abs(expansion) / 5;
+        const color =
+          expansion > 0
+            ? "rgba(255, 200, 180, 0.3)"
+            : "rgba(180, 160, 140, 0.3)";
+
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(
+          landmarks.leftCheek.x,
+          landmarks.leftCheek.y,
+          30 + expansion * 3,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(
+          landmarks.rightCheek.x,
+          landmarks.rightCheek.y,
+          30 + expansion * 3,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+
+      function drawEyebrowMovement(raise) {
+        if (raise === 0) return;
+
+        ctx.strokeStyle = "rgba(101, 87, 73, 0.8)";
+        ctx.lineWidth = 4;
+        ctx.lineCap = "round";
+
+        // Left eyebrow
+        ctx.beginPath();
+        ctx.moveTo(landmarks.leftEye.x - 30, landmarks.leftEye.y - 25 + raise);
+        ctx.lineTo(landmarks.leftEye.x + 30, landmarks.leftEye.y - 30 + raise);
+        ctx.stroke();
+
+        // Right eyebrow
+        ctx.beginPath();
+        ctx.moveTo(
+          landmarks.rightEye.x - 30,
+          landmarks.rightEye.y - 30 + raise
+        );
+        ctx.lineTo(
+          landmarks.rightEye.x + 30,
+          landmarks.rightEye.y - 25 + raise
+        );
+        ctx.stroke();
+      }
+
+      function drawJawShadow(jawDrop) {
+        const gradient = ctx.createLinearGradient(
+          landmarks.jaw.x,
+          landmarks.jaw.y,
+          landmarks.jaw.x,
+          landmarks.jaw.y + jawDrop * 3
+        );
+        gradient.addColorStop(0, "rgba(0, 0, 0, 0)");
+        gradient.addColorStop(1, "rgba(0, 0, 0, 0.2)");
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.ellipse(
+          landmarks.jaw.x,
+          landmarks.jaw.y + jawDrop,
+          80,
+          jawDrop * 2,
+          0,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+
+      function speakVowel(vowel) {
+        const shape = vowelShapes[vowel];
+        if (!shape) return;
+
+        // Clear any existing animation
+        if (currentAnimation) {
+          clearTimeout(currentAnimation);
+        }
+
+        // Animate to vowel shape
+        let progress = 0;
+        const steps = 20;
+        const stepDuration = shape.duration / steps / 2; // Half duration for opening
+
+        function animateToVowel() {
+          progress += 1 / steps;
+          if (progress > 1) progress = 1;
+
+          const currentShape = {
+            width: shape.mouth.width * progress,
+            height: shape.mouth.height * progress,
+            roundness: shape.mouth.roundness,
+          };
+
+          drawEnhancedFace({
+            mouthShape: currentShape,
+            jawDrop: shape.jaw.drop * progress,
+            jawForward: shape.jaw.forward * progress,
+            cheekExpansion: shape.cheeks.expand * progress,
+            eyebrowRaise: shape.eyebrows.raise * progress,
+          });
+
+          if (progress < 1) {
+            setTimeout(animateToVowel, stepDuration);
+          } else {
+            // Hold the vowel shape briefly, then return to neutral
+            setTimeout(() => {
+              animateToNeutral(shape);
+            }, shape.duration / 3);
+          }
+        }
+
+        animateToVowel();
+      }
+
+      function animateToNeutral(fromShape) {
+        let progress = 1;
+        const steps = 15;
+        const stepDuration = 30;
+
+        function animateBack() {
+          progress -= 1 / steps;
+          if (progress < 0) progress = 0;
+
+          const currentShape =
+            progress > 0
+              ? {
+                  width: fromShape.mouth.width * progress,
+                  height: fromShape.mouth.height * progress,
+                  roundness: fromShape.mouth.roundness,
+                }
+              : null;
+
+          drawEnhancedFace({
+            mouthShape: currentShape,
+            jawDrop: fromShape.jaw.drop * progress,
+            jawForward: fromShape.jaw.forward * progress,
+            cheekExpansion: fromShape.cheeks.expand * progress,
+            eyebrowRaise: fromShape.eyebrows.raise * progress,
+          });
+
+          if (progress > 0) {
+            setTimeout(animateBack, stepDuration);
+          }
+        }
+
+        animateBack();
+      }
+
+      function speakSequence() {
+        const vowels = ["A", "E", "I", "O", "U"];
+        let index = 0;
+
+        function speakNext() {
+          if (index < vowels.length) {
+            speakVowel(vowels[index]);
+            index++;
+            setTimeout(speakNext, 800);
+          }
+        }
+
+        speakNext();
+      }
+
+      function startIdleAnimation() {
+        function animate() {
+          if (!idleAnimation) return;
+
+          animationFrame++;
+
+          // Natural blinking pattern
+          const blinkCycle = animationFrame % 180; // Blink every 6 seconds at 30fps
+          const eyesClosed =
+            (blinkCycle >= 0 && blinkCycle <= 4) ||
+            (blinkCycle >= 90 && blinkCycle <= 92);
+          const blinkIntensity =
+            blinkCycle <= 2
+              ? (blinkCycle + 1) / 3
+              : blinkCycle <= 4
+              ? (5 - blinkCycle) / 3
+              : 0;
+
+          // Subtle breathing effect
+          const breathCycle = Math.sin(animationFrame * 0.05) * 0.5;
+
+          drawEnhancedFace({
+            eyesClosed: eyesClosed,
+            blinkIntensity: eyesClosed ? blinkIntensity : 1,
+            cheekExpansion: breathCycle,
+          });
+
+          requestAnimationFrame(animate);
+        }
+
+        animate();
+      }
+
+      function toggleIdleAnimation() {
+        idleAnimation = !idleAnimation;
+        if (idleAnimation) {
+          startIdleAnimation();
+        }
+      }
+
+      // Start the application
+      if (faceImg.complete) {
+        imageLoaded = true;
+        startIdleAnimation();
+      } else {
+        // Fallback - start even without image
+        setTimeout(() => {
+          if (!imageLoaded) {
+            startIdleAnimation();
+          }
+        }, 1000);
+      }
+    </script>
+  </body>
+</html>
